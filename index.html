@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+   <meta charset="UTF-8">
+   <meta http-equiv="X-UA-Compatible" content="IE=edge">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Zombie Debug</title>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.7.0/gsap.min.js"></script>
+   <style>
+      * {
+         padding: 0;
+         margin: 0;
+         box-sizing: border-box;
+      }
+
+      body {
+         background-color: #444;
+         overflow: hidden;
+      }
+
+      #canvas1 {
+         background: radial-gradient(rgb(0, 200, 150), rgb(0, 0, 0));
+         z-index: 100;
+         /* margin: 50px auto; */
+         display: block;
+      }
+   </style>
+</head>
+
+<body>
+   <canvas id="canvas1"></canvas>
+   <canvas id="canvas2"></canvas>
+   <script>
+
+      const canvas = document.querySelector('#canvas1')
+      const ctx = canvas.getContext('2d')
+
+      // AUDIOS CONFIG
+      const zombieAmbient1Audio = setAudio('zombieAmbient1', 'mp3', 0.2)
+      const zombieAmbient2Audio = setAudio('zombieAmbient2', 'mp3', 0.2)
+      const zombieAmbient3Audio = setAudio('zombieAmbient3', 'mp3', 0.2)
+      const zombieAmbient4Audio = setAudio('zombieAmbient4', 'mp3', 0.2)
+      const zombieAmbient5Audio = setAudio('zombieAmbient5', 'mp3', 0.2)
+      const reloadAudio = setAudio('pickup', 'mp3', 0.2)
+      const bulletAudio = setAudio('uzi', 'mp3', 0.2)
+      const zombieDeadAudio = setAudio('zombie-dead', 'mp3', 0.2)
+
+      canvas.width = innerWidth
+      canvas.height = innerHeight
+
+      canvas2.width = innerWidth
+      canvas2.height = innerHeight
+
+      const LEFT_KEY = 65
+      const RIGHT_KEY = 68
+      const UP_KEY = 87
+      const DOWN_KEY = 83
+      const RELOAD_KEY = 82
+      const SPEED_KEY = 16
+
+      const position = canvas.getBoundingClientRect()
+
+      const spriteBlood = new Image()
+      spriteBlood.src = './sprites/blood.png'
+      let spriteBloodWidth = 150
+      let spriteBloodHeight = 600
+      let colsBlood = 1
+
+      const spriteZombie = new Image()
+      spriteZombie.src = './sprites/zombie.png'
+      let spriteZombieWidth = 288
+      let spriteZombieHeight = 311
+      let cols = 17
+      let rows = 0
+      let gameFrame = 0
+
+      const enemies = []
+      const bullets = []
+      const bloods = []
+      const keys = {}
+      let angle = 0
+      let mouse = {
+         x: 0,
+         y: 0
+      }
+
+      let startgame = true
+      let autofire = false
+      let frame = 0
+      let ammunition = 100
+      let reloadTime = 1000
+      let spray = 3 // (Impar * 2) + 1
+      let out = false
+      let showGun = true
+      let speedrun = 3
+      let enemydead = 0
+
+      let zombienumber = 100
+      let timeSpawn = 100
+
+      canvas.style.cursor = 'crosshair'
+
+      // fetch('./weapons.json').then(res => res.json()).then(data => {
+      //    spriteZombie.load = run()
+      // })
+
+      function randFloat(a, b) {
+         if (a === void 0) return Math.random()
+         else if (b === void 0) return Math.random() * a
+         else return Math.random() * (b - a) + a
+      }
+
+      function setAudio(file, extension = 'mp3', volume = 0.3) {
+         const audio = new Audio()
+         audio.src = `./sounds/${file}.${extension}`
+         audio.volume = volume
+         audio.load()
+
+         return audio
+      }
+
+      function rand(a, b) {
+         return Array.isArray(a)
+            ? a[Math.floor(Math.random() * a.length)]
+            : window.randInt(a, b)
+      }
+
+      function randInt(a, b) {
+         if (a === void 0) return Math.round(Math.random())
+         else if (b === void 0) return Math.floor(Math.random() * a)
+         else return Math.floor(Math.random() * (b - a + 1) + a)
+      }
+
+      class Weapon {
+         constructor(x, y, width, height, color, damage, reloadTime, angle) {
+            this.x = x
+            this.y = y
+            this.width = width
+            this.height = height
+            this.color = color
+            this.damage = damage
+            this.reloadTime = reloadTime
+            this.angle
+         }
+
+         update() { }
+         draw() {
+            const a = Math.atan2(mouse.y - this.y, mouse.x - this.x)
+
+            ctx.save()
+            ctx.fillStyle = 'gray'
+            ctx.translate(this.x, this.y)
+            ctx.rotate(a)
+            ctx.fillRect(this.width / -2 + 20, this.height / -2, this.width, this.height)
+            ctx.restore()
+         }
+      }
+
+      class Player {
+         constructor(x, y, radius, color) {
+            this.x = x
+            this.y = y
+            this.radius = radius
+            this.color = color
+            this.velocity = speedrun
+            this.weapon = null
+         }
+
+         update() {
+            if (LEFT_KEY in keys) {
+               this.x -= this.velocity
+            } else if (RIGHT_KEY in keys) {
+               this.x += this.velocity
+            }
+
+            if (UP_KEY in keys) {
+               this.y -= this.velocity
+            } else if (DOWN_KEY in keys) {
+               this.y += this.velocity
+            }
+
+            if (RELOAD_KEY in keys && ammunition < 100) {
+               out = true
+               showGun = false
+               reloadAudio.currentTime = 0
+               reloadAudio.play()
+               setTimeout(() => {
+                  ammunition = 100
+                  out = false
+                  showGun = true
+               }, reloadTime)
+            }
+
+            if (SPEED_KEY in keys) {
+               this.velocity = 10
+               this.radius = 5
+               showGun = false
+               out = true
+            } else {
+               showGun = true
+               this.radius = 15
+               this.velocity = 3
+               out = false
+            }
+
+            this.weapon = new Weapon(this.x, this.y, 40, 15, '#444', 10, 1000, angle)
+         }
+         draw() {
+
+            if (showGun) {
+               this.weapon.draw()
+            }
+
+            ctx.save()
+            ctx.fillStyle = this.color
+            ctx.strokeStyle = '#fff'
+            ctx.beginPath()
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.lineWidth = 3
+            ctx.stroke()
+            ctx.restore()
+
+
+         }
+      }
+
+      class Enemy {
+         constructor(x, y, radius, color, life) {
+            this.x = x
+            this.y = y
+            this.radius = radius
+            this.color = color
+            this.life = life
+         }
+
+         update() {
+
+            if (gameFrame % 120 === 0) {
+               cols = (cols + 1) % 17
+            }
+
+            gameFrame++
+         }
+
+         draw() {
+            // ctx.save()
+            // ctx.fillStyle = this.color
+            // ctx.beginPath()
+            // ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI)
+            // ctx.fill()
+            // ctx.restore()
+
+            const a = Math.atan2(player.y - this.y - position.top, player.x - this.x - position.left)
+
+
+            // ctx.fillRect(this.width / -2 + 20, this.height / -2, this.width, this.height)
+
+            let size = 60
+
+            ctx.save()
+            ctx.fillStyle = this.color
+            // ctx.beginPath()
+            ctx.translate(this.x, this.y)
+            ctx.rotate(a)
+            ctx.drawImage(
+               spriteZombie,
+               spriteZombieWidth * cols, spriteZombieHeight * rows, spriteZombieWidth, spriteZombieHeight,
+               size / -2, size / -2, size, size
+            )
+            // ctx.fillRect(this.x, this.y, 50, 50)
+            // ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI)
+            // ctx.fill()
+            ctx.restore()
+         }
+      }
+
+      class Bullet {
+         constructor(x, y, radius, velocity, color, angle) {
+            this.x = x
+            this.y = y
+            this.radius = radius
+            this.velocity = velocity
+            this.color = color
+            this.angle = angle
+         }
+
+         update() {
+            this.x += this.velocity.x
+            this.y += this.velocity.y
+         }
+         draw() {
+            ctx.save()
+            ctx.beginPath()
+            ctx.strokeStyle = this.color
+            // ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI)
+            ctx.moveTo(this.x, this.y)
+            // ctx.fill()
+            ctx.lineTo(this.x + Math.cos(this.angle) * 20, this.y + Math.sin(this.angle) * 20)
+            ctx.lineWidth = 1
+            ctx.stroke()
+            ctx.restore()
+
+         }
+      }
+
+
+      window.addEventListener('keydown', e => keys[e.keyCode] = true)
+      window.addEventListener('keyup', e => delete keys[e.keyCode])
+      canvas.addEventListener('mousedown', e => {
+         autofire = true
+      })
+
+      canvas.addEventListener('mouseup', e => {
+         autofire = false
+      })
+
+      const player = new Player(canvas.width / 2, canvas.height / 2, 15, '#000')
+
+      canvas.addEventListener('mousemove', e => {
+         mouse.x = e.clientX - position.left
+         mouse.y = e.clientY - position.top
+      })
+
+      setInterval(() => {
+         if (enemies.length < zombienumber) {
+
+            let a = 10
+            let s = rand(10, 20)
+
+            let x = a
+               ? rand(-s * rand(2, 10), canvas.width + s * rand(2, 10))
+               : rand([-s * rand(2, 10), canvas.width + s * rand(2, 10)])
+            let y = a
+               ? rand([-s * rand(2, 10), canvas.height + s * rand(2, 10)])
+               : rand(-s * rand(2, 10), canvas.height + s * rand(2, 10))
+
+            let color = `hsl(${Math.random() * 255}, 50%, 50%)`
+
+            enemies.push(new Enemy(x, y, s, color, 100))
+         }
+      }, timeSpawn)
+
+      setInterval(() => {
+         if (bloods.length > 20) {
+            bloods.shift()
+         }
+      }, 100)
+
+      setInterval(() => {
+         let arrayAudioAmbient = [zombieAmbient1Audio, zombieAmbient2Audio, zombieAmbient3Audio, zombieAmbient4Audio, zombieAmbient5Audio]
+
+         arrayAudioAmbient[rand(0, 3)].play()
+      }, 10000)
+
+      function run() {
+
+         if (startgame) {
+            ctx.clearRect(0, 0, canvas2.width, canvas2.height)
+
+            // ctx.fillStyle = 'rgba(0,0,0,0.3)'
+            // ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+            // let gradient = ctx.createRadialGradient(
+            //    player.x + 0,
+            //    player.y + 0,
+            //    300,
+            //    player.x + 0,
+            //    player.y + 0,
+            //    0
+            // );
+
+            // gradient.addColorStop(0, 'rgba(0,0,0,' + 1 * 0.95 + ')');
+            // gradient.addColorStop(0.8, 'rgba(0,0,0,' + 1 * 0.5 + ')');
+            // gradient.addColorStop(1, 'rgba(0,0,0,' + 1 * 0.3 + ')');
+
+            // ctx2.fillStyle = gradient;
+            // ctx2.fillRect(0, 0, canvas2.width, canvas2.height);
+
+
+            const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x)
+
+            if (autofire && frame % 5 === 0 && (ammunition <= 500 && ammunition > 0) && !out) {
+
+               bulletAudio.currentTime = 0
+               bulletAudio.play()
+
+               // (impar - 1) / 2 = Spray perfeito
+               for (let i = -(spray - 1) / 2; i <= (spray - 1) / 2; i++) {
+                  const velocity = {
+                     x: Math.cos(angle + i / 10) * 30,
+                     y: Math.sin(angle + i / 10) * 30
+                  }
+
+                  bullets.push(new Bullet(player.x, player.y, 2, velocity, '#EB7', angle))
+               }
+               ammunition -= spray
+            }
+
+
+
+
+            bullets.forEach((bullet, indexBullet) => {
+               bullet.update()
+               bullet.draw()
+
+               if (
+                  bullet.x + bullet.radius < 0 ||
+                  bullet.x > canvas.width - bullet.radius ||
+                  bullet.y + bullet.radius < 0 ||
+                  bullet.y > canvas.height - bullet.radius
+               ) {
+                  bullets.splice(indexBullet, 1)
+               }
+            })
+
+            bloods.forEach(blood => {
+               ctx.save()
+               ctx.drawImage(
+                  spriteBlood,
+                  spriteBloodWidth * colsBlood, 0, spriteBloodWidth, spriteBloodWidth,
+                  blood.x, blood.y, 70, 70
+               )
+               ctx.restore()
+            })
+
+            player.update()
+            player.draw()
+
+            enemies.forEach((enemy, indexEnemy) => {
+               const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x)
+
+               const velocity = {
+                  x: Math.cos(angle) * 2,
+                  y: Math.sin(angle) * 2
+               }
+
+               enemy.x += velocity.x
+               enemy.y += velocity.y
+
+               enemy.update()
+               enemy.draw()
+            })
+
+            for (let i in enemies) {
+
+               const enemy = enemies[i]
+
+               for (let j in bullets) {
+
+                  const bullet = bullets[j]
+
+                  let dist = Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y)
+
+                  if (enemy && bullet && dist - enemy.radius - 10 < 2) {
+
+                     zombieDeadAudio.currentTime = 0
+                     zombieDeadAudio.play()
+
+                     bloods.push({ x: enemy.x, y: enemy.y })
+
+                     enemydead++
+                     if (enemy.life && enemy.radius - 10 > 10) {
+                        enemy.radius -= 10
+                        gsap.to(enemy, {
+                           radius: enemy.radius - 10,
+                        })
+                        enemy.life -= 10
+                        bullets.splice(j, 1)
+                        j--
+                     } else {
+                        bullets.splice(j, 1)
+                        enemies.splice(i, 1)
+                        i--
+                        j--
+                     }
+
+                     break
+                  }
+
+               }
+            }
+         }
+
+         if (ammunition === 0) {
+            ctx.fillStyle = '#fff'
+            ctx.font = '16px creepster'
+            ctx.fillText(`Recarregar`.toLocaleUpperCase(), player.x - 50, player.y + 50)
+         }
+
+
+         ctx.save()
+         ctx.fillStyle = '#fff'
+         ctx.font = '30px creepster'
+
+         // Gambiarra para zerar a munição caso seja numero negativo
+         if (ammunition <= -1) ammunition = 0
+
+         ctx.fillText(`Munição: ${ammunition} / 100`, 30, 35)
+         ctx.restore()
+
+         ctx.save()
+         ctx.fillStyle = '#fff'
+         ctx.font = '30px creepster'
+         ctx.fillText(`Inimigos Mortos: ${enemydead}`, 30, 70)
+         ctx.restore()
+
+         frame++
+         requestAnimationFrame(run)
+
+      }
+
+      run()
+
+
+
+   </script>
+</body>
+
+</html>

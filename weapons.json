@@ -1,0 +1,9 @@
+{
+   "minigun": {
+      "name": "minigun",
+      "autofire": true,
+      "ammunition": 100,
+      "reloadTime": 1000,
+      "spray": 3
+   }
+}
