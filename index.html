@@ -45,6 +45,7 @@
       const reloadAudio = setAudio('pickup', 'mp3', 0.2)
       const bulletAudio = setAudio('uzi', 'mp3', 0.2)
       const zombieDeadAudio = setAudio('zombie-dead', 'mp3', 0.2)
+      const deadPlayerSound = setAudio('dead-player', 'mp3', 0.3)
 
       canvas.width = innerWidth
       canvas.height = innerHeight
@@ -86,6 +87,7 @@
       }
 
       let startgame = true
+      let animatedId
       let autofire = false
       let frame = 0
       let ammunition = 100
@@ -348,13 +350,15 @@
          }
       }, 100)
 
-      setInterval(() => {
+      let ambientSoundRandom = setInterval(() => {
          let arrayAudioAmbient = [zombieAmbient1Audio, zombieAmbient2Audio, zombieAmbient3Audio, zombieAmbient4Audio, zombieAmbient5Audio]
 
          arrayAudioAmbient[rand(0, 3)].play()
       }, 10000)
 
       function run() {
+
+         animatedId = requestAnimationFrame(run)
 
          if (startgame) {
             ctx.clearRect(0, 0, canvas2.width, canvas2.height)
@@ -430,6 +434,7 @@
 
             enemies.forEach((enemy, indexEnemy) => {
                const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x)
+               const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y)
 
                const velocity = {
                   x: Math.cos(angle) * 2,
@@ -441,6 +446,18 @@
 
                enemy.update()
                enemy.draw()
+
+               if (dist - player.radius < 1) {
+                  // startgame = false
+                  cancelAnimationFrame(animatedId)
+                  clearInterval(ambientSoundRandom)
+                  zombieAmbient1Audio.muted = true
+                  zombieAmbient2Audio.muted = true
+                  zombieAmbient3Audio.muted = true
+                  zombieAmbient4Audio.muted = true
+                  zombieAmbient5Audio.muted = true
+                  deadPlayerSound.play()
+               }
             })
 
             for (let i in enemies) {
@@ -507,7 +524,7 @@
          ctx.restore()
 
          frame++
-         requestAnimationFrame(run)
+         // requestAnimationFrame(run)
 
       }
 
